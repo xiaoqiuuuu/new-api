@@ -20,6 +20,7 @@ For commercial licensing, please contact support@quantumnous.com
 import React, { useEffect, useState, useContext, useRef } from 'react';
 import {
   API,
+  copy,
   showError,
   showSuccess,
   timestamp2string,
@@ -31,6 +32,7 @@ import {
 import { useIsMobile } from '../../../../hooks/common/useIsMobile';
 import {
   Button,
+  Modal,
   SideSheet,
   Space,
   Spin,
@@ -41,6 +43,7 @@ import {
   Form,
   Col,
   Row,
+  Input,
 } from '@douyinfe/semi-ui';
 import {
   IconCreditCard,
@@ -48,6 +51,7 @@ import {
   IconSave,
   IconClose,
   IconKey,
+  IconCopy,
 } from '@douyinfe/semi-icons';
 import { useTranslation } from 'react-i18next';
 import { StatusContext } from '../../../../context/Status';
@@ -63,6 +67,8 @@ const EditTokenModal = (props) => {
   const [models, setModels] = useState([]);
   const [groups, setGroups] = useState([]);
   const isEdit = props.editingToken.id !== undefined;
+  const [createdTokenKeys, setCreatedTokenKeys] = useState([]);
+  const [showCreatedModal, setShowCreatedModal] = useState(false);
 
   const getInitValues = () => ({
     name: '',
@@ -236,6 +242,7 @@ const EditTokenModal = (props) => {
     } else {
       const count = parseInt(values.tokenCount, 10) || 1;
       let successCount = 0;
+      const keys = [];
       for (let i = 0; i < count; i++) {
         let { tokenCount: _tc, ...localInputs } = values;
         const baseName =
@@ -259,18 +266,26 @@ const EditTokenModal = (props) => {
         localInputs.model_limits = localInputs.model_limits.join(',');
         localInputs.model_limits_enabled = localInputs.model_limits.length > 0;
         let res = await API.post(`/api/token/`, localInputs);
-        const { success, message } = res.data;
+        const { success, message, data } = res.data;
         if (success) {
           successCount++;
+          if (data?.key) {
+            keys.push({ name: localInputs.name, key: data.key });
+          }
         } else {
           showError(t(message));
           break;
         }
       }
       if (successCount > 0) {
-        showSuccess(t('令牌创建成功，请在列表页面点击复制获取令牌！'));
         props.refresh();
         props.handleClose();
+        if (keys.length > 0) {
+          setCreatedTokenKeys(keys);
+          setShowCreatedModal(true);
+        } else {
+          showSuccess(t('令牌创建成功！'));
+        }
       }
     }
     setLoading(false);
@@ -278,7 +293,58 @@ const EditTokenModal = (props) => {
   };
 
   return (
-    <SideSheet
+    <>
+      <Modal
+        title={t('令牌创建成功')}
+        visible={showCreatedModal}
+        onOk={() => setShowCreatedModal(false)}
+        onCancel={() => setShowCreatedModal(false)}
+        okText={t('确认')}
+        cancelButtonProps={{ style: { display: 'none' } }}
+        width={isMobile ? '95%' : 520}
+      >
+        <Typography.Text type='secondary' className='block mb-3'>
+          {t(
+            '请妥善保存以下令牌密钥，您也可以在列表页面通过眼睛图标重新查看',
+          )}
+        </Typography.Text>
+        <Space vertical align='start' className='w-full'>
+          {createdTokenKeys.map(({ name, key }, idx) => (
+            <div key={idx} className='w-full'>
+              {createdTokenKeys.length > 1 && (
+                <Typography.Text strong className='block mb-1'>
+                  {name}
+                </Typography.Text>
+              )}
+              <Input
+                readOnly
+                value={key}
+                suffix={
+                  <Button
+                    theme='borderless'
+                    size='small'
+                    type='tertiary'
+                    icon={<IconCopy />}
+                    onClick={async () => {
+                      if (await copy(key)) {
+                        showSuccess(t('已复制到剪贴板！'));
+                      } else {
+                        Modal.error({
+                          title: t('无法复制到剪贴板，请手动复制'),
+                          content: key,
+                          size: 'large',
+                        });
+                      }
+                    }}
+                  />
+                }
+              />
+            </div>
+          ))}
+        </Space>
+      </Modal>
+
+      <SideSheet
       placement={isEdit ? 'right' : 'left'}
       title={
         <Space>
@@ -580,6 +646,7 @@ const EditTokenModal = (props) => {
         </Form>
       </Spin>
     </SideSheet>
+    </>
   );
 };
 
